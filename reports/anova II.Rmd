@@ -30,11 +30,11 @@ library(additivityTests)
 library(captioner)
 # opts --------------------------------------------------------------------
 
-source("opts.R")
+source("../src/opts.R")
 
 # Functions ---------------------------------------------------------------
 
-source("functions.R")
+source("../src/functions.R")
 
 tabla <- captioner("Tabla", levels = 2)
 figura <- captioner("Figura", levels = 2)
@@ -44,7 +44,7 @@ figura <- captioner("Figura", levels = 2)
 ## Problemas
 1.-	La siguiente tabla muestra la ganancia en peso de ratas macho sometidas a seis dietas diferentes:
 ```{r 1_load}
-peso_rata <- read.xlsx("anova II.xlsx", sheetIndex = 1, encoding = "UTF-8")
+peso_rata <- read.xlsx("../data/anova II.xlsx", sheetIndex = 1, encoding = "UTF-8")
 names(peso_rata)[c(1, 3, 5)] <- c("Fuente", names(peso_rata)[c(2, 4)])
 peso_rata <- transform(peso_rata, Fuente = repeat.before(Fuente)) #Fill NA
 pander(peso_rata)
@@ -124,7 +124,7 @@ pander(summary(contrast(p1c, list(c1 = c(-.5, -.5, 1),
 2.-	Se desean comparar tres genotipos distintos de *Drosophila melanogaster* observando si existen diferencias de viabilidad sembrando 100 y 800 huevos De este modo para cada uno de los tratamientos se dispusieron 6 preparados y al cabo de un tiempo suficiente de ser sembrados los huevos se obtuvo el porcentaje de huevos que hablan eclosionado. Los resultados fueron:
 	
 ```{r 2_load}
-huevos <- read.xlsx("anova II.xlsx", sheetIndex = 2, encoding = "UTF-8")
+huevos <- read.xlsx("../data/anova II.xlsx", sheetIndex = 2, encoding = "UTF-8")
 names(huevos)[-1] <- rep(c("PP", "PN", "NN"), each = 3)
 huevos <- transform(huevos, 
                     Huevos.Sembrados = as.factor(repeat.before(Huevos.Sembrados)))
@@ -200,7 +200,7 @@ autoplot(huevos_aov, which = c(1:3,5 ), mfrow = c(2,2))
 
 	  
 ```{r 3_load}
-sangrado <- read.xlsx("anova II.xlsx", sheetIndex = 3, encoding = "UTF-8")
+sangrado <- read.xlsx("../data/anova II.xlsx", sheetIndex = 3, encoding = "UTF-8")
 pander(sangrado)
 ```
 
@@ -264,7 +264,7 @@ autoplot(sangrado_aov, which = c(1:3, 5), mfrow = c(2, 2))
 4.-	Se sembró Lactobacíllus fermentus en una mezcla de agar y un medio de cultivo sin tiamina se llenaron 18 tubos de ensayo con una cantidad fija de la mezcla. A grupos de tres, elegidos al azar, se les agregó un sobrenadante que contenía una dosis fija de tres preparaciones de tiamina Después de una  incubación por 18 horas se midió el crecimiento de L. fermentus en términos del largo de la columna de nebulosidad que se desarrolla por debajo del sobrenadante:
 	
 ```{r 4_load}
-yogur <- read.xlsx("anova II.xlsx", sheetIndex = 4, encoding = "UTF-8", 
+yogur <- read.xlsx("../data/anova II.xlsx", sheetIndex = 4, encoding = "UTF-8", 
                    startRow = 2)
 pander(yogur)
 ```
@@ -317,7 +317,7 @@ autoplot(yogur_aov, which = c(1:3, 5), mfrow = c(2, 2))
 5)	La siguiente tabla ilustra el engorde semanal de cerdos clasificados por sexo, con tres tipos de alimentación A, B y C.
 
 ```{r 5_load}
-cerdos <- read.xlsx("anova II.xlsx", sheetIndex = 5, encoding = "UTF-8")
+cerdos <- read.xlsx("../data/anova II.xlsx", sheetIndex = 5, encoding = "UTF-8")
 pander(cerdos)
 ```
 
@@ -363,7 +363,7 @@ autoplot(cerdos_aov, which = c(1:2, 5), mfrow = c(2, 2))
 6.-	Se eligen al azar seis laboratorios para analizar la concentración de humedad en cuatro tipos de levadura: de panadería (I), liviana de cerveza (II), pesada de cerveza (III) y Torula (IV) A cada uno de los laboratorios se les entregan recipientes con uno de los cuatro tipos de levadura, pero sin indicar cual. La concentración de humedad se analiza por secado de horno al vacío. Los datos que se dan a continuación corresponden al contenido de humedad (en términos de % de humedad - 6.00) de 4 alícuotas de 2 gramos cada una.
 
 ```{r 6_load}
-levadura <- read.xlsx("anova II.xlsx", sheetIndex = 6, encoding = "UTF-8")
+levadura <- read.xlsx("../data/anova II.xlsx", sheetIndex = 6, encoding = "UTF-8")
 levadura %<>% transform(Laboratorio = repeat.before(Laboratorio))
 levels(levadura$Laboratorio) <- 
   gsub("Levadura", "", levels(levadura$Laboratorio))
@@ -422,7 +422,7 @@ autoplot(levadura_aov, which = c(1:3, 5), mfrow = c(2,2))
 7,- Eligiendo 4 tardes al azar del verano, se midió la temperatura de un lago a diferentes profundidades, con los siguientes resultados
 
 ```{r 7_load}
-lago <- read.xlsx("anova II.xlsx", sheetIndex = 7, encoding = "UTF-8", startRow = 2)
+lago <- read.xlsx("../data/anova II.xlsx", sheetIndex = 7, encoding = "UTF-8", startRow = 2)
 pander(lago)
 names(lago)[1] <- "profundidad"
 ```
