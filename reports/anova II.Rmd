@@ -16,6 +16,7 @@ library(pander)
 library(xlsx)
 library(plyr)
 library(ggplot2)
+library(ggfortify)
 library(lsmeans)
 library(reshape2)
 library(magrittr)
@@ -28,6 +29,7 @@ library(knitr)
 library(tidyr)
 library(additivityTests)
 library(captioner)
+library(broom)
 # opts --------------------------------------------------------------------
 
 source("../src/opts.R")
@@ -69,11 +71,11 @@ pander(ddply(peso_rata, .(Fuente, Proteina), summarise,
              mean = mean(Ganancia_Peso),
              var = var(Ganancia_Peso),
              sd = sd(Ganancia_Peso)))
-pander(table("sumario_1", "Medias, varianzas y desvíos  estándar por grupo"))
+tabla("sumario_1", "Medias, varianzas y desvíos  estándar por grupo")
        
 pander(bartlett.test(Ganancia_Peso ~ interaction(Fuente, Proteina), 
                      data = peso_rata))
-pander(table("btest_1", "Test de Bartlett"))
+tabla("btest_1", "Test de Bartlett")
 pander(leveneTest(Ganancia_Peso ~ Fuente*Proteina, data = peso_rata))
 pander(ddply(peso_rata, .(Fuente, Proteina), 
              function(x) {
@@ -104,7 +106,7 @@ ggplot(peso_rata_smr, aes(Fuente, lsmean, ymax = upper.CL, ymin = lower.CL)) +
 
 
 ```{r 1_anova_plot}
-autoplot(peso_rata_aov, which = c(1:3, 5), mfrow = c(2,2))
+autoplot(peso_rata_aov)
 ```
 
 ```{r 1_comparisons}
@@ -192,7 +194,7 @@ pander(huevos_aov)
 ```
 
 ```{r 2_aov_plot, fig.cap="Figura 2.3 -- Gráficos diagnostico para ANOVA Viabilidad ~ Genotipo*Huevos.Sembrados"}
-autoplot(huevos_aov, which = c(1:3,5 ), mfrow = c(2,2))
+autoplot(huevos_aov)
 ```
 
 
@@ -258,7 +260,7 @@ cat("Figura 3.2 -- Diagrama de perfiles de los minutos de sangrado según métod
 
 
 ```{r 3_autoplot, fig.cap="Figura 3.3 -- Gráficos diagnostico para ANOVA Viabilidad ~ Genotipo*Huevos.Sembrados"}
-autoplot(sangrado_aov, which = c(1:3, 5), mfrow = c(2, 2))
+autoplot(sangrado_aov)
 ```
 
 4.-	Se sembró Lactobacíllus fermentus en una mezcla de agar y un medio de cultivo sin tiamina se llenaron 18 tubos de ensayo con una cantidad fija de la mezcla. A grupos de tres, elegidos al azar, se les agregó un sobrenadante que contenía una dosis fija de tres preparaciones de tiamina Después de una  incubación por 18 horas se midió el crecimiento de L. fermentus en términos del largo de la columna de nebulosidad que se desarrolla por debajo del sobrenadante:
@@ -309,7 +311,7 @@ ggplot(yogur, aes(Concent..de.tiamina, crecimiento)) +
 cat("Figura 4.1 -- Diagrama de perfiles para el crecimiento de *Lactobacillus fermentus* bajo diferentes concentraciones de tiamina y preparados")
 ```
 ```{r 4_autoplot, fig.cap="Figura 4.2 -- Gráficos diagnostico para ANOVA crecimiento ~ Concent..de.tiamina*preparacion"}
-autoplot(yogur_aov, which = c(1:3, 5), mfrow = c(2, 2))
+autoplot(yogur_aov)
 
 ```
 
@@ -318,7 +320,7 @@ autoplot(yogur_aov, which = c(1:3, 5), mfrow = c(2, 2))
 
 ```{r 5_load}
 cerdos <- read.xlsx("../data/anova II.xlsx", sheetIndex = 5, encoding = "UTF-8")
-pander(cerdos)
+pander(setNames(cerdos, c("&nbsp;", LETTERS[1:3])))
 ```
 
 a)	Hacer un estudio de perfiles
@@ -352,11 +354,11 @@ pander(leveneTest(engorde ~ sexo, data = cerdos))
 # pander(ddply(cerdos, .(sexo), 
 #              function(x) lillie.test(x$engorde)))
 
-pander(cerdos_aov <- aov(engorde ~ sexo * alimentacion, data = cerdos))
+pander(cerdos_aov <- aov(engorde ~ sexo + alimentacion, data = cerdos))
 ```
 
 ```{r 5_autoplot, fig.cap="Figura 5.2 -- Gráfico diagnostico para ANOVA engorde ~ sexo * alimentación"}
-autoplot(cerdos_aov, which = c(1:2, 5), mfrow = c(2, 2))
+autoplot(cerdos_aov)
 ```
 
 
@@ -416,10 +418,10 @@ pander(cld(lsmeans(levadura_aov, ~tipo)))
 ```
 
 ```{r 6_plot_res, fig.cap="Figura 6.3 -- Gráfico diagnostico de ANOVA humedad ~ tipo * laboratorio"}
-autoplot(levadura_aov, which = c(1:3, 5), mfrow = c(2,2))
+autoplot(levadura_aov)
 ```
 
-7,- Eligiendo 4 tardes al azar del verano, se midió la temperatura de un lago a diferentes profundidades, con los siguientes resultados
+7- Eligiendo 4 tardes al azar del verano, se midió la temperatura de un lago a diferentes profundidades, con los siguientes resultados
 
 ```{r 7_load}
 lago <- read.xlsx("../data/anova II.xlsx", sheetIndex = 7, encoding = "UTF-8", startRow = 2)
@@ -451,9 +453,6 @@ ggplot(lago_smr, aes(profundidad, m)) +
 
 
 ```{r 7_test_assumption}
-
-
-
 pander(bartlett.test(temp ~ profundidad, data = lago))
 pander(leveneTest(temp ~ profundidad, data = lago))
 # pander(ddply(lago, .(profundidad), 
@@ -462,7 +461,7 @@ pander(leveneTest(temp ~ profundidad, data = lago))
 #                c(D_max = unname(ans[[1]]), p.value = ans[[2]]) 
 #                }))
 
-
+pander(lillie.test(lago$temp))
 
 ```
  
@@ -492,6 +491,11 @@ pander(cld(lsmeans(lago_aov, ~profundidad)))
 ```
 
 ```{r 7_autoplot, fig.cap="Gráfico de residudales del ANOVA"}
-autoplot(lago_aov, which = c(1:3, 5), mfrow = c(2,2))
+autoplot(lago_aov)
+```
+
+```{r}
+lago_augmented <- augment(lago_aov)
+lillie.test(lago_augmented$.std.resid)
 ```
 
