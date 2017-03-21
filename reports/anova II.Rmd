@@ -1,0 +1,497 @@
+---
+title: "Problemas ANOVA II"
+author: "Luciano Selzer"
+date: "21 de agosto de 2015"
+output: 
+  word_document:
+    fig_width: 6
+    fig_height: 6
+    fig_caption: true
+---
+
+
+```{r setup, include=FALSE}
+# Setup -------------------------------------------------------------------
+library(pander)
+library(xlsx)
+library(plyr)
+library(ggplot2)
+library(lsmeans)
+library(reshape2)
+library(magrittr)
+library(nortest) #normality test
+library(car)
+library(pwr)
+library(agricolae)
+library(compute.es)
+library(knitr)
+library(tidyr)
+library(additivityTests)
+library(captioner)
+# opts --------------------------------------------------------------------
+
+source("opts.R")
+
+# Functions ---------------------------------------------------------------
+
+source("functions.R")
+
+tabla <- captioner("Tabla", levels = 2)
+figura <- captioner("Figura", levels = 2)
+
+```
+
+## Problemas
+1.-	La siguiente tabla muestra la ganancia en peso de ratas macho sometidas a seis dietas diferentes:
+```{r 1_load}
+peso_rata <- read.xlsx("anova II.xlsx", sheetIndex = 1, encoding = "UTF-8")
+names(peso_rata)[c(1, 3, 5)] <- c("Fuente", names(peso_rata)[c(2, 4)])
+peso_rata <- transform(peso_rata, Fuente = repeat.before(Fuente)) #Fill NA
+pander(peso_rata)
+pander(tabla("peso_rata", "Datos de ganancia de peso (en g.) en ratas macho sometidas a seis dietas diferentes"))
+```
+
+
+a)	¿Hay diferencia entre los valores de proteína?
+b)	¿Hay diferencia entre las fuentes animal y vegetal?
+c)	La diferencia entre las fuentes animal y vegetal ¿varia con el nivel de proteína?
+d)	¿Hay diferencia entre la carne vacuna y la de cerdo?
+e)	La diferencia entre la carne vacuna y la de cerdo ¿varía con el nivel de proteína?
+
+
+```{r 1_test_assumptions}
+peso_rata <- melt(peso_rata, variable.name = "Proteina", 
+                  value.name = "Ganancia_Peso")
+levels(peso_rata$Proteina) <-  rep(levels(peso_rata$Proteina)[c(1,3)], each = 2)
+
+
+pander(ddply(peso_rata, .(Fuente, Proteina), summarise, 
+             mean = mean(Ganancia_Peso),
+             var = var(Ganancia_Peso),
+             sd = sd(Ganancia_Peso)))
+pander(table("sumario_1", "Medias, varianzas y desvíos  estándar por grupo"))
+       
+pander(bartlett.test(Ganancia_Peso ~ interaction(Fuente, Proteina), 
+                     data = peso_rata))
+pander(table("btest_1", "Test de Bartlett"))
+pander(leveneTest(Ganancia_Peso ~ Fuente*Proteina, data = peso_rata))
+pander(ddply(peso_rata, .(Fuente, Proteina), 
+             function(x) {
+               ans <- lillie.test(x$Ganancia_Peso)
+               c(D_max = unname(ans[[1]]), p.value = ans[[2]]) 
+               }))
+```
+
+
+```{r 1_ANOVA}
+peso_rata_aov <- aov(Ganancia_Peso ~ Fuente*Proteina, data = peso_rata)
+pander(peso_rata_aov)
+peso_rata_lsm <- lsmeans(peso_rata_aov, ~ Proteina|Fuente)
+set.caption("Tabla - Medias, error estándar e intervalo de confianza de 95% estimados por ANOVA para el engorde de ratas con distintas dietas")
+pander(summary(peso_rata_lsm))
+```
+
+```{r 1_plot, fig.height=3, fig.width=5}
+peso_rata_smr <- summary(peso_rata_lsm)
+ggplot(peso_rata_smr, aes(Fuente, lsmean, ymax = upper.CL, ymin = lower.CL)) +
+  geom_point(aes(shape = Proteina)) +
+  geom_linerange() +
+  geom_line(aes(linetype = Proteina, group = Proteina)) +
+  scale_x_discrete(labels = c("Carne de \ncerdo", "Carne de \nvaca", "Cereal"))+
+  labs(x = "Fuente", y = "Ganancía de Peso")
+  
+```
+
+
+```{r 1_anova_plot}
+autoplot(peso_rata_aov, which = c(1:3, 5), mfrow = c(2,2))
+```
+
+```{r 1_comparisons}
+p1b <- lsmeans(peso_rata_aov, "Fuente" )
+set.caption("Contraste entre: c1 = Fuentes animales vs vegetal, c2 = Fuente Vacuna vs Porcina")
+pander(summary(contrast(p1b, list(c1 = c(-.5, -.5, 1), 
+                                  c2 = c(-1, 1,0 )))))
+p1c <- lsmeans(peso_rata_aov, ~ Fuente|Proteina)
+set.caption("Contraste entre Dietas animales y vegetal dentro de cada nivel de
+            proteína c1 = Fuentes animales vs vegetal, c2 = Fuente Vacuna vs
+            Porcina")
+pander(summary(contrast(p1c, list(c1 = c(-.5, -.5, 1),
+                                  c2 = c(-1, 1,0 )))))
+
+```
+
+2.-	Se desean comparar tres genotipos distintos de *Drosophila melanogaster* observando si existen diferencias de viabilidad sembrando 100 y 800 huevos De este modo para cada uno de los tratamientos se dispusieron 6 preparados y al cabo de un tiempo suficiente de ser sembrados los huevos se obtuvo el porcentaje de huevos que hablan eclosionado. Los resultados fueron:
+	
+```{r 2_load}
+huevos <- read.xlsx("anova II.xlsx", sheetIndex = 2, encoding = "UTF-8")
+names(huevos)[-1] <- rep(c("PP", "PN", "NN"), each = 3)
+huevos <- transform(huevos, 
+                    Huevos.Sembrados = as.factor(repeat.before(Huevos.Sembrados)))
+pander(huevos)
+```
+
+
+a)	¿Son diferentes los tres genotipos en cuanto a viabilidad?
+b)	¿Es distinta la viabilidad sembrando 100 u 800 huevos?
+c)	¿Existe interacción entre genotipo y número de huevos?
+
+```{r 2_test_assumptions, fig.height=3, fig.width=4}
+huevos <- melt(huevos, id.vars = "Huevos.Sembrados",
+               variable.name = "Genotipo", 
+                  value.name = "Viabilidad")
+huevos <- transform(huevos, Viabilidad = as.numeric(Viabilidad))
+levels(huevos$Genotipo) <-  rep(c("PP", "PN", "NN"), each = 3)
+
+set.caption("Tabla 1.1 -- Medias, varianzas y desvios estándar por grupo")
+pander(huevos_sum <- ddply(huevos, .(Genotipo, Huevos.Sembrados), summarise, 
+             mean = mean(Viabilidad),
+             var = var(Viabilidad),
+             sd = sd(Viabilidad)))
+
+ggplot(huevos, aes(Genotipo, Viabilidad, fill = Huevos.Sembrados)) +
+  geom_boxplot()
+cat("Figura 2.1 -- Diagrama de cajas y barras por genetipo y número de huevos sembrados.")
+
+pander(bartlett.test(Viabilidad ~ interaction(Genotipo, Huevos.Sembrados), 
+                     data = huevos))
+
+pander(leveneTest(Viabilidad ~ Genotipo*Huevos.Sembrados, data = huevos))
+pander(ddply(huevos, .(Genotipo, Huevos.Sembrados), 
+             function(x) {
+               ans <- lillie.test(x$Viabilidad)
+               c(D_max = unname(ans[[1]]), p.value = ans[[2]]) 
+               }))
+```
+
+Datos transformados con arcoseno.
+
+```{r 2_test_asin_asumptions}
+huevos <- transform(huevos, aViabilidad = asin(sqrt(Viabilidad/100)))
+set.caption("Tabla 1.1 -- Medias, varianzas y desvios estándar por grupo con los datos transformados con arcoseno(raiz(y))")
+pander(ddply(huevos, .(Genotipo, Huevos.Sembrados), summarise, 
+             mean = mean(aViabilidad),
+             var = var(aViabilidad),
+             sd = sd(aViabilidad)))
+
+pander(bartlett.test(aViabilidad ~ interaction(Genotipo, Huevos.Sembrados), 
+                     data = huevos))
+pander(leveneTest(aViabilidad ~ Genotipo*Huevos.Sembrados, data = huevos))
+pander(ddply(huevos, .(Genotipo, Huevos.Sembrados), 
+             function(x) {
+               ans <- lillie.test(x$aViabilidad)
+               c(D_max = ans[[1]], p.value = ans[[2]])
+             }))
+
+```
+
+
+```{r 2_aov}
+huevos_aov <- aov(aViabilidad ~ Genotipo*Huevos.Sembrados, data = huevos)
+pander(huevos_aov)
+```
+
+```{r 2_aov_plot, fig.cap="Figura 2.3 -- Gráficos diagnostico para ANOVA Viabilidad ~ Genotipo*Huevos.Sembrados"}
+autoplot(huevos_aov, which = c(1:3,5 ), mfrow = c(2,2))
+```
+
+
+3.-	Los Dres. V Vampirus y José Dracul deciden llevar a cabo una experiencia para determinar el tiempo de sangrado de ciertos animales (Horno sapiens), cuando se les produce una mordedura. Aplican un método que supuestamente lo alarga y lo comparan con un control (método tradicional). Como les surgen dudas respecto a la hora en que se realiza el sangrado experimentan a la medianoche y a la madrugada. Los datos corresponden al tiempo de sangrado, en minutos.
+
+	  
+```{r 3_load}
+sangrado <- read.xlsx("anova II.xlsx", sheetIndex = 3, encoding = "UTF-8")
+pander(sangrado)
+```
+
+a)	Comprobar las suposiciones del Anova.
+b)	Realizar el ANOVA
+c)	Si Ud. fuera uno de los mencionados galenos, ¿cuándo y cómo realizaría el sangrado?
+
+```{r 3_test_assumptions, fig.width=4, fig.height=3}
+sangrado <- sangrado %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  transform(hora = as.factor(row.names(.)))
+names(sangrado)[1] <- "metodo"
+sangrado  <- 
+  melt(sangrado, measure.vars = paste0("V", 2:6), value.name = "minutos")[, -3] %>% 
+  transform(minutos = as.numeric(minutos))
+levels(sangrado$hora) <- rep(rev(c("medianoche", "madrugada")), each = 2)
+
+set.caption("Tabla 3.1 -- Medias, varianzas y desvios estándar por grupo")
+pander(ddply(sangrado, .(metodo, hora), summarise, 
+             mean = mean(minutos),
+             var = var(minutos),
+             sd = sd(minutos)))
+
+ggplot(sangrado, aes(metodo, minutos, fill = hora)) +
+  geom_boxplot() +
+  scale_x_discrete(labels = c("método\nnuevo","método\nviejo"))
+cat("Figura 3.1 -- Gráfico de cajas y barras de minutos de sangrado según método y hora.")
+
+pander(bartlett.test(minutos ~ interaction(metodo, hora), 
+                     data = sangrado))
+pander(leveneTest(minutos ~ metodo*hora, data = sangrado))
+pander(ddply(sangrado, .(metodo, hora), 
+                          function(x) {
+               ans <- lillie.test(x$minutos)
+               c(D_max = unname(ans[[1]]), p.value = ans[[2]]) 
+               }))
+
+```
+
+
+```{r 3_aov, fig.width=4, fig.height=3}
+sangrado_aov <- aov(minutos ~ metodo*hora, data = sangrado)
+pander(sangrado_aov)
+sangrado_lsm <- lsmeans(sangrado_aov, ~metodo|hora)
+
+ggplot(summary(sangrado_lsm), aes(metodo, lsmean)) +
+  geom_point(aes(shape = hora), size = 5) +
+  geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL), width = 0.1)+
+  geom_line(aes(linetype = hora, group = hora)) +
+  ylab("Minutos") +
+  scale_shape(solid = FALSE)
+cat("Figura 3.2 -- Diagrama de perfiles de los minutos de sangrado según método y hora")
+```
+
+
+```{r 3_autoplot, fig.cap="Figura 3.3 -- Gráficos diagnostico para ANOVA Viabilidad ~ Genotipo*Huevos.Sembrados"}
+autoplot(sangrado_aov, which = c(1:3, 5), mfrow = c(2, 2))
+```
+
+4.-	Se sembró Lactobacíllus fermentus en una mezcla de agar y un medio de cultivo sin tiamina se llenaron 18 tubos de ensayo con una cantidad fija de la mezcla. A grupos de tres, elegidos al azar, se les agregó un sobrenadante que contenía una dosis fija de tres preparaciones de tiamina Después de una  incubación por 18 horas se midió el crecimiento de L. fermentus en términos del largo de la columna de nebulosidad que se desarrolla por debajo del sobrenadante:
+	
+```{r 4_load}
+yogur <- read.xlsx("anova II.xlsx", sheetIndex = 4, encoding = "UTF-8", 
+                   startRow = 2)
+pander(yogur)
+```
+
+a)	A un nivel del 1% y del 5% docimar la hipótesis de no significación entre las preparaciones y entre las dosis. Interpretar los resultados.
+b)	Hacer un estudio de perfiles.
+
+```{r 4_test_assumptions}
+pander(tukey.test(as.matrix(yogur[, -1])))
+yogur <- yogur %>% 
+  gather(preparacion, crecimiento, -Concent..de.tiamina) %>% 
+  transform(Concent..de.tiamina = as.factor(Concent..de.tiamina))
+
+pander(bartlett.test(crecimiento ~ 
+                       preparacion , 
+                     data = yogur))
+pander(bartlett.test(crecimiento ~ 
+                       Concent..de.tiamina , 
+                     data = yogur))
+pander(leveneTest(crecimiento ~ preparacion, data = yogur))
+pander(leveneTest(crecimiento ~ Concent..de.tiamina, data = yogur))
+set.caption("Tabla: Test de Kolgomorov-Smirnoff con la modificación de lilliefors para los distintas preparaciones")
+pander(ddply(yogur, .(preparacion), 
+             function(x) {
+               ans <- lillie.test(x$crecimiento)
+               c(D_max = unname(ans[[1]]), p.value = ans[[2]]) 
+               }))
+
+```
+
+
+```{r 4_aov, fig.width=4, fig.height=3}
+yogur_aov <- aov(crecimiento ~ Concent..de.tiamina+preparacion, data = yogur)
+pander(yogur_aov)
+yogur_lsm <- lsmeans(yogur_aov, ~Concent..de.tiamina)
+
+ggplot(yogur, aes(Concent..de.tiamina, crecimiento)) +
+  geom_point(aes(shape = preparacion), size = 5) +
+  geom_line(aes(linetype = preparacion, group = preparacion)) +
+  labs(x = "Concentración de tiamina", y = "Crecimiento") +
+  scale_shape(solid = FALSE)
+cat("Figura 4.1 -- Diagrama de perfiles para el crecimiento de *Lactobacillus fermentus* bajo diferentes concentraciones de tiamina y preparados")
+```
+```{r 4_autoplot, fig.cap="Figura 4.2 -- Gráficos diagnostico para ANOVA crecimiento ~ Concent..de.tiamina*preparacion"}
+autoplot(yogur_aov, which = c(1:3, 5), mfrow = c(2, 2))
+
+```
+
+
+5)	La siguiente tabla ilustra el engorde semanal de cerdos clasificados por sexo, con tres tipos de alimentación A, B y C.
+
+```{r 5_load}
+cerdos <- read.xlsx("anova II.xlsx", sheetIndex = 5, encoding = "UTF-8")
+pander(cerdos)
+```
+
+a)	Hacer un estudio de perfiles
+b)	Comprobar los supuestos del modelo
+c)	Estudiar si existe variabilidad entre sexos y entre tipos de alimentación
+	
+```{r 5_analysis, warning=TRUE, fig.width=4, fig.height=3 }
+pander(tukey.test(as.matrix(cerdos[, -1])))
+names(cerdos)[1] <- "sexo"
+cerdos <- cerdos %>% 
+  gather(alimentacion, engorde, -sexo)
+
+
+ggplot(cerdos, aes(alimentacion, engorde)) +
+  geom_point(aes(shape = sexo), size = 5) +
+  geom_line(aes(linetype = sexo, group = sexo)) +
+  labs(x = "Alimentación", y = "Engorde") +
+  scale_shape(solid = FALSE)
+cat("Figura 5.1 -- Engorde de cerdos bajo tres alimentaciones para ambos sexos")
+
+pander(bartlett.test(engorde ~ 
+                       alimentacion , 
+                     data = cerdos))
+pander(bartlett.test(engorde ~ 
+                       sexo , 
+                     data = cerdos))
+pander(leveneTest(engorde ~ alimentacion, data = cerdos))
+pander(leveneTest(engorde ~ sexo, data = cerdos))
+# pander(ddply(cerdos, .(alimentacion), 
+#              function(x) lillie.test(x$engorde)))
+# pander(ddply(cerdos, .(sexo), 
+#              function(x) lillie.test(x$engorde)))
+
+pander(cerdos_aov <- aov(engorde ~ sexo * alimentacion, data = cerdos))
+```
+
+```{r 5_autoplot, fig.cap="Figura 5.2 -- Gráfico diagnostico para ANOVA engorde ~ sexo * alimentación"}
+autoplot(cerdos_aov, which = c(1:2, 5), mfrow = c(2, 2))
+```
+
+
+6.-	Se eligen al azar seis laboratorios para analizar la concentración de humedad en cuatro tipos de levadura: de panadería (I), liviana de cerveza (II), pesada de cerveza (III) y Torula (IV) A cada uno de los laboratorios se les entregan recipientes con uno de los cuatro tipos de levadura, pero sin indicar cual. La concentración de humedad se analiza por secado de horno al vacío. Los datos que se dan a continuación corresponden al contenido de humedad (en términos de % de humedad - 6.00) de 4 alícuotas de 2 gramos cada una.
+
+```{r 6_load}
+levadura <- read.xlsx("anova II.xlsx", sheetIndex = 6, encoding = "UTF-8")
+levadura %<>% transform(Laboratorio = repeat.before(Laboratorio))
+levels(levadura$Laboratorio) <- 
+  gsub("Levadura", "", levels(levadura$Laboratorio))
+pander(levadura)
+```
+
+```{r 6_test_assumption, fig.height=3, fig.width=4}
+names(levadura)[1] <- "tipo"
+levadura %<>% 
+  gather(laboratorio, humedad, -tipo)
+levadura_smr <- ddply(levadura, .(laboratorio, tipo), summarise,
+                      m = mean(humedad),
+                      sd = sd(humedad))
+
+ggplot(levadura_smr, aes(tipo, m)) +
+  geom_point(aes(shape = laboratorio), size = 2) +
+  geom_errorbar(aes(ymin = m - sd, ymax = m + sd), width = 0.1) +
+  geom_line(aes(linetype = laboratorio, group = laboratorio)) +
+  labs(x = "Tipo", y = "Humedad (%)") +
+  scale_shape(solid = FALSE) +
+  theme(axis.text.x = element_text(angle = 20, hjust = 1))
+cat("Figura 6.1 -- Humedad de las diferentes tipos levaduras según el laboratorio")
+
+pander(bartlett.test(humedad ~ interaction(laboratorio, tipo), data = levadura))
+pander(leveneTest(humedad ~ laboratorio * tipo, data = levadura))
+pander(ddply(levadura, .(tipo), 
+                           function(x) {
+               ans <- lillie.test(x$humedad)
+               c(D_max = unname(ans[[1]]), p.value = ans[[2]]) 
+               }))
+
+grid <- with(levadura, seq(min(humedad), max(humedad), length = 100))
+normaldens <- ddply(levadura, "tipo", function(df) {
+  data.frame( 
+    humedad = grid,
+    Density = dnorm(grid, mean(df$humedad), sd(df$humedad))
+  )
+})
+
+
+ggplot(levadura, aes(humedad)) + 
+  geom_bar() + 
+  geom_line(data = normaldens, aes(humedad, Density), colour = "red") +
+  facet_wrap(~tipo)
+cat("Figura 6.2 -- Histograma más linea de densidad normal para la humedad según el tipo de levadura")
+
+levadura_aov <- aov(humedad ~ laboratorio * tipo, data = levadura)
+pander(anova(levadura_aov))
+pander(cld(lsmeans(levadura_aov, ~tipo)))
+```
+
+```{r 6_plot_res, fig.cap="Figura 6.3 -- Gráfico diagnostico de ANOVA humedad ~ tipo * laboratorio"}
+autoplot(levadura_aov, which = c(1:3, 5), mfrow = c(2,2))
+```
+
+7,- Eligiendo 4 tardes al azar del verano, se midió la temperatura de un lago a diferentes profundidades, con los siguientes resultados
+
+```{r 7_load}
+lago <- read.xlsx("anova II.xlsx", sheetIndex = 7, encoding = "UTF-8", startRow = 2)
+pander(lago)
+names(lago)[1] <- "profundidad"
+```
+
+
+¿Que tipo de diseño se utilizó? Examinar si hay diferencias entre profundidades y entre fechas
+
+```{r 7_plot, fig.height=2, fig.width=3}
+pander(tukey.test(as.matrix(lago[ , -1])))
+lago %<>% 
+  gather(dia, temp, -profundidad) %>% 
+  transform(profundidad = as.factor(profundidad))
+
+
+
+lago_smr <- ddply(lago, .(dia, profundidad), summarise,
+                      m = mean(temp),
+                      sd = sd(temp))
+ggplot(lago_smr, aes(profundidad, m)) +
+  geom_point(aes(shape = dia), size = 2) +
+  geom_errorbar(aes(ymin = m - sd, ymax = m + sd), width = 0.1) +
+  geom_line(aes(linetype = dia, group = dia)) +
+  labs(x = "Profundidad", y = "Temperatura (°C)") +
+  scale_shape(solid = FALSE)
+```
+
+
+```{r 7_test_assumption}
+
+
+
+pander(bartlett.test(temp ~ profundidad, data = lago))
+pander(leveneTest(temp ~ profundidad, data = lago))
+# pander(ddply(lago, .(profundidad), 
+#                            function(x) {
+#                ans <- lillie.test(x$temp)
+#                c(D_max = unname(ans[[1]]), p.value = ans[[2]]) 
+#                }))
+
+
+
+```
+ 
+No se puede hacer un test formal de normalidad para cada grupo debido al bajo número de replicas.
+
+```{r 7_plot_normaltiy, fig.width=5, fig.height=3, fig.cap="Histograma con la normal superpuesta."}
+grid <- with(lago, seq(min(temp), max(temp), length = 100))
+normaldens <- ddply(lago, "profundidad", function(df) {
+  data.frame( 
+    temp = grid,
+    Density = dnorm(grid, mean(df$temp), sd(df$temp))
+  )
+})
+
+
+ggplot(lago, aes(temp)) + 
+  geom_bar() + 
+  geom_line(data = normaldens, aes(temp, Density), colour = "red") +
+  facet_wrap(~profundidad)
+```
+
+```{r 7_anova}
+lago_aov <- aov(temp ~ dia + profundidad, data = lago)
+
+pander(anova(lago_aov))
+pander(cld(lsmeans(lago_aov, ~profundidad)))
+```
+
+```{r 7_autoplot, fig.cap="Gráfico de residudales del ANOVA"}
+autoplot(lago_aov, which = c(1:3, 5), mfrow = c(2,2))
+```
+
